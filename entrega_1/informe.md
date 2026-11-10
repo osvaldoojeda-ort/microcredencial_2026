@@ -1,7 +1,7 @@
 
 # Entrega 1 — Ortelana Textil: Del Diagnóstico al Concepto de Solución
 
-*Informe modelo de la cátedra. Caso guía: Ortelana Textil — subsistema de onboarding de distribuidores.*
+*Informe modelo de la cátedra (. Caso guía: Ortelana Textil — subsistema de onboarding de distribuidores.*
 
 > Este informe es el ejemplo resuelto de la Entrega 1. Cada grupo hace lo mismo sobre **su propio caso**. A partir de la Clase 3 este mismo documento funciona como especificación para construir el prototipo.
 
