@@ -1,9 +1,13 @@
 """
 Llamada a la API real del modelo (request → response).
 
+Es el mismo módulo de la Clase 3, con un cambio: hoy el workflow llama al modelo
+DOS veces y para cosas distintas, así que la llamada recibe dos parámetros nuevos:
+
+    paso 2  (extraer)  → json_mode=True,  temperatura=0    : queremos un JSON estable
+    paso 11 (redactar) → json_mode=False, temperatura=0.3  : queremos texto natural
+
 Soporta Gemini y el formato compatible con OpenAI (OpenAI y Groq).
-El proveedor y el modelo se eligen por variables de entorno: el resto
-del sistema no depende de cuál se use.
 """
 
 import json
@@ -29,19 +33,23 @@ def _post_json(url: str, payload: dict, headers: dict) -> dict:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _llamar_gemini(system: str, usuario: str, api_key: str) -> str:
+def _llamar_gemini(system: str, usuario: str, api_key: str, json_mode: bool, temperatura: float) -> str:
     modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
+    config = {"temperature": temperatura}
+    if json_mode:
+        config["responseMimeType"] = "application/json"
     payload = {
         "systemInstruction": {"parts": [{"text": system}]},
         "contents": [{"role": "user", "parts": [{"text": usuario}]}],
-        "generationConfig": {"temperature": 0, "responseMimeType": "application/json"},
+        "generationConfig": config,
     }
     data = _post_json(url, payload, {"x-goog-api-key": api_key})
     return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
-def _llamar_chat_completions(system: str, usuario: str, api_key: str, url: str, modelo: str) -> str:
+def _llamar_chat_completions(system: str, usuario: str, api_key: str, url: str, modelo: str,
+                             json_mode: bool, temperatura: float) -> str:
     """Formato compatible con OpenAI (sirve para OpenAI y para Groq)."""
     payload = {
         "model": modelo,
@@ -49,40 +57,45 @@ def _llamar_chat_completions(system: str, usuario: str, api_key: str, url: str, 
             {"role": "system", "content": system},
             {"role": "user", "content": usuario},
         ],
-        "temperature": 0,
-        "response_format": {"type": "json_object"},
+        "temperature": temperatura,
     }
+    if json_mode:
+        payload["response_format"] = {"type": "json_object"}
     data = _post_json(url, payload, {"Authorization": f"Bearer {api_key}"})
     return data["choices"][0]["message"]["content"]
 
 
-def llamar_modelo(system: str, usuario: str, proveedor: str, api_key: str) -> str:
-    """Una sola llamada. Devuelve el TEXTO crudo del modelo (todavía no es un dict)."""
+def llamar_modelo(system: str, usuario: str, proveedor: str, api_key: str,
+                  json_mode: bool = True, temperatura: float = 0) -> str:
+    """Una sola llamada. Devuelve el TEXTO crudo del modelo."""
     if proveedor == "gemini":
-        return _llamar_gemini(system, usuario, api_key)
+        return _llamar_gemini(system, usuario, api_key, json_mode, temperatura)
     if proveedor == "openai":
         return _llamar_chat_completions(
             system, usuario, api_key,
             "https://api.openai.com/v1/chat/completions",
             os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            json_mode, temperatura,
         )
     if proveedor == "groq":
         return _llamar_chat_completions(
             system, usuario, api_key,
             "https://api.groq.com/openai/v1/chat/completions",
             os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            json_mode, temperatura,
         )
     raise ValueError(f"Proveedor desconocido: {proveedor}")
 
 
-def llamar_con_reintentos(system: str, usuario: str, proveedor: str, api_key: str) -> str:
+def llamar_con_reintentos(system: str, usuario: str, proveedor: str, api_key: str,
+                          json_mode: bool = True, temperatura: float = 0) -> str:
     """
     Un error de comunicación transitorio (503, 429) se reintenta con espera creciente (2s, 4s).
     Una key inválida (401/403) o un pedido mal armado (400) NO se reintenta: fallaría igual.
     """
     for intento in range(1, REINTENTOS + 1):
         try:
-            return llamar_modelo(system, usuario, proveedor, api_key)
+            return llamar_modelo(system, usuario, proveedor, api_key, json_mode, temperatura)
         except urllib.error.HTTPError as e:
             if e.code in CODIGOS_REINTENTABLES and intento < REINTENTOS:
                 espera = 2 ** intento

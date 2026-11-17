@@ -1,7 +1,7 @@
 """
 Pruebas del contrato y de las reglas. No llaman a ninguna API: corren siempre, gratis.
 
-    python -m pytest            (desde la carpeta clase_3)
+    python -m pytest            (desde la carpeta clase_4)
 """
 
 import pytest

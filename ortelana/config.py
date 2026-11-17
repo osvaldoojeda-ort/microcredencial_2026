@@ -10,7 +10,7 @@ import ssl
 from pathlib import Path
 from typing import Optional
 
-# Carpeta raíz del proyecto (clase_3/), un nivel arriba de este paquete.
+# Carpeta raíz del proyecto (clase_4/), un nivel arriba de este paquete.
 RAIZ_PROYECTO = Path(__file__).resolve().parent.parent
 
 # Orden de preferencia: se usa el primer proveedor que tenga una key válida.
