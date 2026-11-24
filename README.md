@@ -1,6 +1,6 @@
-# Clase 4 — Workflow de onboarding de Ortelana
+# Clase 5 — Workflow de Ortelana + RAG sobre la normativa
 
-El componente de la [Clase 3](../clase_3/) extraía los datos de **un mensaje suelto**. Hoy lo convertimos en un **workflow**: la secuencia completa del journey de la [Entrega 1](docs/ortelana_entrega_1_informe.md), con reglas de negocio, una herramienta, puntos de control y la redacción de la respuesta.
+El workflow de la [Clase 4](../clase_4/) respondía las consultas normativas con un texto fijo ("la derivamos al área comercial"). Hoy las responde con **RAG**: busca en la [normativa comercial](../clase_2/ortelana_normativa_comercial.md) las reglas que tienen que ver con la pregunta y el LLM responde **usando solo esas reglas** y citándolas.
 
 ```
 Mensaje
@@ -8,107 +8,115 @@ Mensaje
   ├─ 2  Extraer intención y datos ..................... 🤖 LLM          ┐
   ├─ 4  Validar contrato (json.loads + Pydantic) ...... 📏 Regla        ├ Clase 3
   ├─ 5  Validar CUIT .................................. 📏 Regla        ┘
-  │      └─ ✋ falla → REVISION_HUMANA
   ├─    Enrutar por intención ......................... 📏 Regla
-  │      └─ no es un alta → DERIVADO (respuesta fija)
-  ├─ 6  Documentación obligatoria (NOR-DOC) ........... 📏 Regla
-  ├─ 7  Consultar sistema de gestión .................. 🔧 Herramienta
-  ├─ 8  Categoría, plazo y límite (NOR-CAT/NUEVO/DEUDA) 📏 Regla
-  │      └─ ✋ faltan datos o documentos → PENDIENTE
-  ├─ 9  Armar legajo .................................. 📏 Regla
-  ├─ 10 ✋ Aprobación del Jefe de Administración ........ 🙋 Humano       → PENDIENTE_APROBACION
-  └─ 11 Redactar la respuesta ......................... 🤖 LLM          → APROBADA / RECHAZADA
+  │      ├─ CONSULTA_NORMATIVA → RAG .................. 📚 RAG + 🤖 LLM  ← NUEVO
+  │      │     ├─ algún fragmento supera el umbral → RESPONDIDA (citando la regla)
+  │      │     └─ ✋ ninguno → DERIVADO ("No tengo información oficial")
+  │      └─ otra que no es alta → DERIVADO (respuesta fija)
+  ├─ 6 a 11  el alta, igual que en la Clase 4 ......... 📏 🔧 🙋 🤖     ┘ Clase 4
 ```
 
-**La idea de la clase en una línea:** el orden de los pasos lo fija el **desarrollador**. El modelo interviene solo en los pasos 2 y 11, y nunca decide qué paso sigue. Cuando eso lo decida el modelo, va a ser un **agente** (Clase 6).
+**La idea de la clase en una línea:** el modelo no sabe la normativa de Ortelana. En vez de confiar en su memoria, **le damos el texto de la regla en el momento de la consulta**. Eso es *grounding*, y RAG es la forma más común de hacerlo.
 
 ## Cómo correrlo
 
-Desde esta carpeta (`clase_4/`):
+Desde esta carpeta (`clase_5/`):
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env      # completar GEMINI_API_KEY (gratis en https://aistudio.google.com)
+cp .env.example .env      # opcional: GEMINI_API_KEY para que el LLM redacte de verdad
 
-python app.py             # corre los 9 casos; el Jefe de Administración (simulado) aprueba todo
-python app.py --manual    # vos hacés de Jefe de Administración: aprobás o rechazás cada legajo
-python app.py lcel        # el paso 2 escrito como cadena de LangChain (plantilla | modelo | parser)
-python -m pytest          # 50 pruebas de reglas, herramienta y workflow (no usan la API)
+python app.py                           # los 12 casos del lote, con la traza de cada uno
+python app.py buscar "¿El flete a Córdoba lo pagan ustedes?"           # qué recupera y con qué similitud
+python app.py buscar "¿El flete a Córdoba lo pagan ustedes?" --todas   # sin filtro: aparece la regla DEROGADA
+python app.py comparar                  # la misma pregunta sin RAG y con RAG (Entrega 3, B.3)
+python app.py telas                     # el ejemplo del teórico: "busco algo fresco para un vestido de verano"
+python app.py indexar                   # rehace los índices (el paso OFFLINE)
+python -m pytest                        # 71 pruebas (no usan la API)
 ```
 
-Sin API key corre en **modo simulación**: la extracción usa las respuestas de ejemplo del lote y la redacción usa una plantilla fija.
+> ⏳ **La primera vez tarda:** descarga el modelo de embeddings (~640 MB) y lo guarda en `~/.cache/fastembed`. Después arranca en segundos.
+
+**Sin API key** también funciona. La **búsqueda semántica corre de verdad** (embeddings, ChromaDB, filtro y umbral): los embeddings se calculan en la compu, no en una API. Lo único simulado es el LLM: en vez de redactar, muestra el fragmento recuperado tal cual.
 
 ## Estructura
 
 ```
-clase_4/
-├── app.py                    ← corre el lote, muestra la traza de cada caso y la tabla final
+clase_5/
+├── app.py                        ← el lote + las demos de RAG (buscar, comparar, telas, indexar)
 ├── ortelana/
-│   ├── config.py             ← .env y proveedor de LLM                          (igual que Clase 3)
-│   ├── contrato.py           ← contrato Pydantic de la extracción              (igual que Clase 3)
-│   ├── extractor.py          ← pasos 2, 4 y 5                                   (igual que Clase 3)
-│   ├── llm.py                ← llamada a la API, ahora con modo JSON o texto    (cambio menor)
-│   ├── reglas.py             ← CUIT + NOR-DOC, NOR-CAT-A/B/C, NOR-NUEVO, NOR-DEUDA  (amplía)
-│   ├── herramientas.py       ← paso 7: consultar el sistema de gestión          (nuevo)
-│   ├── redactor.py           ← paso 11: el LLM redacta, con plantilla de respaldo  (nuevo)
-│   ├── workflow.py           ← la secuencia de pasos y los puntos de control    (nuevo)
-│   └── cadena_lcel.py        ← OPCIONAL: el paso 2 como cadena de LangChain     (nuevo)
+│   ├── base_conocimiento.py      ← NUEVO · embeddings + ChromaDB: indexar (offline) y buscar (online)
+│   ├── rag.py                    ← NUEVO · la cadena RAG de LangChain: recuperar | plantilla | modelo | parser
+│   ├── workflow.py               ← CONSULTA_NORMATIVA ahora va al RAG (antes: respuesta fija)
+│   ├── extractor.py, contrato.py, reglas.py, herramientas.py, redactor.py, llm.py, config.py
+│   │                               ← igual que en la Clase 4
+│   └── cadena_lcel.py            ← el paso 2 como cadena LCEL (de la Clase 4)
 ├── prompts/
-│   ├── extraccion_v1.txt     ← el mismo prompt de la Clase 3
-│   └── redaccion_v1.txt      ← prompt del paso 11: "comunicá la decisión, no la cambies"
+│   ├── rag_v1.txt                ← NUEVO · "usá ÚNICAMENTE el contexto; si no está, decí que no sabés"
+│   ├── sin_grounding_v1.txt      ← NUEVO · la misma pregunta sin contexto, para comparar
+│   ├── extraccion_v1.txt         ← igual que en la Clase 3
+│   └── redaccion_v1.txt          ← igual que en la Clase 4
 ├── datos/
-│   ├── lote_prueba.json      ← 9 casos, cada uno con su estado esperado
-│   └── sistema_gestion.json  ← el "ERP" simulado que consulta la herramienta
+│   ├── corpus_normativa.json     ← NUEVO · 12 reglas (9 vigentes + 3 derogadas) con descripcion_semantica y metadatos
+│   ├── catalogo_telas.json       ← NUEVO · 12 telas: el ejemplo del teórico (fuera del workflow)
+│   ├── preguntas_comparacion.json← NUEVO · 4 preguntas para el antes/después
+│   ├── lote_prueba.json          ← 12 casos (los 9 de la Clase 4 + 3 consultas normativas)
+│   └── sistema_gestion.json      ← el "ERP" simulado (igual que en la Clase 4)
+├── indice_chroma/                ← se genera solo; no se sube a git
 ├── tests/
-│   ├── test_contrato.py      ← las pruebas de la Clase 3 (siguen pasando)
-│   └── test_workflow.py      ← reglas, herramienta y un test por cada caso del lote
-└── docs/                               ← los informes del TP, acumulados hasta esta clase
+│   ├── test_rag.py               ← NUEVO · recuperación, filtro, umbral y cadena
+│   ├── test_workflow.py, test_contrato.py
+│   └── conftest.py               ← las pruebas nunca llaman a una API
+└── docs/                         ← los informes del TP, acumulados hasta esta clase
     ├── ortelana_entrega_1_informe.md   ← Entrega 1 (Clase 2), copia de referencia
     ├── ortelana_entrega_2_informe.md   ← Entrega 2 (Clase 3), copia de referencia
-    └── ortelana_entrega_3_informe.md   ← informe modelo de la Entrega 3: Parte A completa (Hito 1),
-                                          B y C se completan en las Clases 5 y 6
+    └── ortelana_entrega_3_informe.md   ← Entrega 3: Parte A (Clase 4) + Parte B (hoy); la C, en la Clase 6
 ```
 
-## Qué cambia respecto de la Clase 3
+## Qué cambia respecto de la Clase 4
 
-| | Clase 3 | Clase 4 |
+| | Clase 4 | Clase 5 |
 |---|---|---|
-| **Qué procesa** | Un mensaje: extrae y valida | El journey completo, hasta la respuesta al distribuidor |
-| **Llamadas al LLM** | 1 (extraer) | 2: extraer (JSON, temperatura 0) y redactar (texto, temperatura 0.3) |
-| **Reglas de negocio** | Dígito verificador del CUIT | + NOR-DOC, NOR-CAT-A/B/C, NOR-NUEVO, NOR-DEUDA, categoría inexistente |
-| **Herramientas** | Ninguna | `consultar_sistema_gestion` (sensor: solo lee) |
-| **Qué pasa con cada intención** | Solo se clasifica | Se **enruta**: el alta sigue el flujo y el resto recibe una respuesta fija |
-| **Resultado** | Extracción validada o error | Uno de 6 estados, con la **traza** de los pasos recorridos |
-| **Humano** | No aparece | Punto de control obligatorio antes de aprobar (NOR-APROB) |
+| **`CONSULTA_NORMATIVA`** | Respuesta fija: "la derivamos al área comercial" | RAG: responde citando la regla, o dice "No tengo información oficial" |
+| **Estados posibles** | 6 | 7: se suma `RESPONDIDA` |
+| **Base de conocimiento** | Ninguna | ChromaDB con la normativa (12 documentos) y el catálogo de telas (12) |
+| **LangChain** | Opcional (`cadena_lcel.py`) | **La cadena RAG está hecha con LangChain** (`rag.py`) |
+| **Puntos de control** | 4 | 5: se suma el **umbral de similitud** |
+| **Lote** | 9 casos | 12 casos |
 
-## Los 9 casos del lote
+## Los casos nuevos del lote
 
 | # | Caso | Termina en | Qué enseña |
 |---|---|---|---|
-| 1 | Completo (B) | `PENDIENTE_APROBACION` | El camino feliz: recorre todo y espera a la persona |
-| 2 | Falta un documento | `PENDIENTE` | El caso típico de la Clase 3 hoy **no alcanza**: falta Ingresos Brutos |
-| 3 | CUIT inválido | `REVISION_HUMANA` | El flujo se corta en el paso 5 y no sigue con datos no confiables |
-| 4 | Manipulación (VIP Oro) | `PENDIENTE` | Nadie aprueba nada. "VIP Oro" queda como alerta |
-| 5 | Nuevo que factura como A | `PENDIENTE_APROBACION` | NOR-NUEVO: entra en B y con 30 días, aunque pidió A y 60 |
-| 6 | Cliente antiguo (A) | `PENDIENTE_APROBACION` | La **herramienta** cambia la decisión: 18 meses de antigüedad → A |
-| 7 | Cliente con deuda | `PENDIENTE_APROBACION` | NOR-DEUDA: solo contado, así que no se le piden documentos |
-| 8 | Consulta normativa | `DERIVADO` | El enrutamiento. Desde la Clase 5 se responde con RAG |
-| 9 | Fuera de alcance | `DERIVADO` | El stock no está en el MVP |
+| 8 | Consulta normativa (flete a Córdoba) | `RESPONDIDA` | Antes era `DERIVADO`. La versión **derogada** de la regla decía lo contrario: el filtro `vigente=True` la deja afuera |
+| 10 | Consulta con sinónimos | `RESPONDIDA` | "Transporte de la mercadería" encuentra la regla del "flete": busca por **significado** |
+| 11 | Consulta de documentación | `RESPONDIDA` | NOR-DOC se usa para **informar** (RAG) y para **decidir** (`reglas.py`) |
+| 12 | Consulta sin respuesta (criptomonedas) | `DERIVADO` | Nada supera el umbral: **el LLM ni se llama**. Sin RAG, el modelo lo inventa |
 
 ## Decisiones de diseño que vale la pena discutir en clase
 
-- **Nunca hay aprobación automática.** El workflow termina como mucho en `PENDIENTE_APROBACION`. La aprobación es otra función (`registrar_decision`) que necesita a una persona. Hay un test que lo garantiza (`test_ningun_alta_se_aprueba_sin_una_persona`).
-- **PENDIENTE no es rechazo.** Si faltan datos o documentos, se le piden al distribuidor (NOR-DOC). Rechazar a alguien porque se olvidó un papel haría perder clientes.
-- **Las alertas no frenan el flujo.** "Pidió VIP Oro" o "pidió A y le corresponde B" no son errores: son información para quien aprueba. Por eso van al legajo.
-- **Si falla la redacción, se usa la plantilla.** Para cuando llega el paso 11, la decisión ya está tomada. Si la API se cae, se comunica igual con un texto fijo. Que un error de redacción frene una aprobación no tendría sentido.
-- **El LLM redacta a partir de un JSON, no del legajo completo.** Recibe solo lo que tiene que comunicar (categoría, plazo, límite, reglas). Las observaciones internas no le llegan, así no puede filtrarlas al distribuidor.
+- **El RAG informa, las reglas deciden.** NOR-CAT-B está en el corpus para *responder preguntas* ("¿cuánto crédito me dan en B?"). La categoría de un alta la sigue calculando `reglas.py`. Un texto recuperado por similitud no es una fuente confiable para una decisión con plata de por medio.
+- **Un documento por regla.** El *chunking* se hizo a mano: cada regla es una unidad de sentido. Cortar el documento cada 500 caracteres partiría reglas por la mitad.
+- **Lo que se filtra va en metadatos.** `vigente`, `seccion` y `en_stock` son metadatos: se comparan exacto. Lo que se busca por significado va en `descripcion_semantica`. Probá `python app.py telas "tela de jean"`: "jean" está solo en los metadatos, y por eso no lo encuentra.
+- **El umbral es una decisión, no un número mágico.** Con este corpus y este modelo, lo que está en la normativa da 0.38 o más, y lo que no está, 0.30-0.32. Por eso 0.35. Con otro modelo hay que recalibrarlo.
+- **Dos capas contra la invención.** El umbral evita llamar al LLM sin contexto. Si algo pasa el umbral pero no responde la pregunta, el prompt le pide decir *"No tengo información oficial"*, y el workflow lo deriva igual.
+- **Embeddings en la compu, no en una API.** Son gratis, funcionan sin conexión y sin key, y el modelo (`jina-embeddings-v2-base-es`) está entrenado en español. Con el modelo que trae ChromaDB por defecto (en inglés), la búsqueda acertaba 3 de 7 preguntas de prueba; con este, 6 de 7.
 
 ## ¿Y LangChain?
 
-`cadena_lcel.py` reescribe el paso 2 con el patrón del teórico, `plantilla | modelo | parser`, y da **el mismo resultado** que `extractor.py`. Sirve para mostrar qué resuelve un framework (la "plomería": armar mensajes, llamar a la API, sacar el texto) y qué **no** resuelve: la validación y las reglas siguen siendo nuestro código.
+`rag.py` arma el RAG como una cadena LCEL. Es la misma idea de la Clase 4 (`plantilla | modelo | parser`) con **un paso nuevo adelante**: recuperar el contexto.
 
-El workflow principal está escrito en Python directo a propósito. Con una secuencia fija y pocos pasos, un framework no aporta mucho. Es el criterio del teórico: *empezar por la opción más simple que resuelva el problema*. Para usar la cadena con Gemini real: `pip install langchain-google-genai`.
+```python
+cadena = RunnableParallel(pregunta=RunnablePassthrough(), documentos=recuperar).assign(
+    respuesta=RunnableBranch(
+        (no_hay_contexto, lambda x: "No tengo información oficial..."),   # ✋ el umbral
+        armar_contexto | plantilla | modelo | StrOutputParser(),
+    )
+)
+```
 
-## Qué viene en la Clase 5
+Lo que aporta LangChain acá: `Document` (texto + metadatos), la interfaz `Embeddings`, `Chroma` como base vectorial, `ChatPromptTemplate` y el modelo intercambiable (Gemini, OpenAI o el simulado, sin cambiar la cadena). La Clase 6 se apoya en todo esto: LangGraph está construido sobre LangChain.
 
-Los casos 8 y 9 se responden hoy con un texto fijo. En la Clase 5 la normativa ([`ortelana_normativa_comercial.md`](../clase_2/ortelana_normativa_comercial.md)) se convierte en una base de conocimiento con **RAG**, para responder `CONSULTA_NORMATIVA` ("¿el flete a Córdoba lo pagan ustedes?") citando la regla (NOR-ZONA).
+## Qué viene en la Clase 6
+
+Hoy el RAG responde **una** pregunta con **una** fuente. Si un distribuidor pregunta *"¿con mi facturación me corresponden cuotas sin interés?"*, hace falta consultar el sistema de gestión (la herramienta), aplicar las reglas **y** buscar en la normativa, en el orden que convenga. En la Clase 6 es el **modelo** el que decide qué herramienta usar: eso es un **agente**.

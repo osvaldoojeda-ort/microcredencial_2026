@@ -27,14 +27,15 @@ def _post_json(url: str, payload: dict, headers: dict) -> dict:
     req = urllib.request.Request(
         url,
         data=json.dumps(payload).encode("utf-8"),
-        headers={"Content-Type": "application/json", **headers},
+        # User-Agent propio: Groq (detrás de Cloudflare) rechaza con 403 el "Python-urllib" por defecto.
+        headers={"Content-Type": "application/json", "User-Agent": "ortelana-clase5/1.0", **headers},
     )
     with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=60) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def _llamar_gemini(system: str, usuario: str, api_key: str, json_mode: bool, temperatura: float) -> str:
-    modelo = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+    modelo = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{modelo}:generateContent"
     config = {"temperature": temperatura}
     if json_mode:
@@ -81,7 +82,7 @@ def llamar_modelo(system: str, usuario: str, proveedor: str, api_key: str,
         return _llamar_chat_completions(
             system, usuario, api_key,
             "https://api.groq.com/openai/v1/chat/completions",
-            os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+            os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"),
             json_mode, temperatura,
         )
     raise ValueError(f"Proveedor desconocido: {proveedor}")

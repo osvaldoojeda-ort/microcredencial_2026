@@ -42,7 +42,7 @@ def crear_modelo(respuestas_simuladas: list[str]):
         try:
             if nombre == "gemini":
                 from langchain_google_genai import ChatGoogleGenerativeAI
-                return ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+                return ChatGoogleGenerativeAI(model=os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
                                               temperature=0, google_api_key=key), f"LangChain + {nombre}"
             if nombre == "openai":
                 from langchain_openai import ChatOpenAI

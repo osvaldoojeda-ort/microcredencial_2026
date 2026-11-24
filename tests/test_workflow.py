@@ -1,15 +1,13 @@
 """
 Pruebas de las reglas, la herramienta y el workflow. No llaman a ninguna API: corren siempre, gratis.
 
-    python -m pytest            (desde la carpeta clase_4)
+    python -m pytest            (desde la carpeta clase_5)
 """
 
 import json
 
 import pytest
 
-import ortelana.extractor
-import ortelana.redactor
 from ortelana.config import RAIZ_PROYECTO
 from ortelana.herramientas import consultar_sistema_gestion
 from ortelana.reglas import determinar_condiciones, normalizar_categoria, verificar_documentacion
@@ -17,13 +15,6 @@ from ortelana.workflow import registrar_decision, workflow_onboarding
 
 NUEVO = {"es_cliente": False, "antiguedad_meses": 0, "dias_deuda_vencida": 0}
 LOTE = json.loads((RAIZ_PROYECTO / "datos" / "lote_prueba.json").read_text(encoding="utf-8"))
-
-
-@pytest.fixture(autouse=True)
-def sin_api(monkeypatch):
-    """Aunque haya un .env con key, las pruebas usan siempre la simulación."""
-    monkeypatch.setattr(ortelana.extractor, "detectar_proveedor", lambda: None)
-    monkeypatch.setattr(ortelana.redactor, "detectar_proveedor", lambda: None)
 
 
 # ── Reglas: categoría, plazo y límite ────────────────────────────────────────

@@ -50,16 +50,37 @@
   },
   {
     "tipo": "Consulta normativa",
-    "estado_esperado": "DERIVADO",
+    "estado_esperado": "RESPONDIDA",
     "mensaje": "¿El flete a Córdoba lo pagan ustedes?",
-    "observar": "No es un alta: el enrutamiento la deriva con una respuesta fija. Desde la Clase 5 se va a responder con RAG.",
+    "observar": "En la Clase 4 se derivaba con un texto fijo. Hoy se responde con RAG citando NOR-ZONA: Córdoba paga el flete. Ojo: la versión DEROGADA de la regla decía lo contrario, y el filtro vigente=True la deja afuera.",
     "simulacion": "{\"intencion\": \"CONSULTA_NORMATIVA\", \"razon_social\": null, \"cuit\": null, \"facturacion_anual\": null, \"plazo_solicitado_dias\": null, \"categoria_solicitada\": null, \"documentos_mencionados\": []}"
   },
   {
     "tipo": "Fuera de alcance",
     "estado_esperado": "DERIVADO",
     "mensaje": "¿Tienen stock de denim azul? Necesito 15 rollos.",
-    "observar": "El stock no está en el MVP: respuesta fija con el canal de ventas.",
+    "observar": "El stock no está en el MVP: respuesta fija con el canal de ventas. (El catálogo de telas de la Clase 5 es solo una demo: python app.py telas).",
     "simulacion": "{\"intencion\": \"FUERA_DE_ALCANCE\", \"razon_social\": null, \"cuit\": null, \"facturacion_anual\": null, \"plazo_solicitado_dias\": null, \"categoria_solicitada\": null, \"documentos_mencionados\": []}"
+  },
+  {
+    "tipo": "Consulta con sinónimos",
+    "estado_esperado": "RESPONDIDA",
+    "mensaje": "¿Quién se hace cargo del transporte de la mercadería hasta Mendoza?",
+    "observar": "No dice 'flete' ni 'zona', y aun así encuentra NOR-ZONA: la búsqueda es por SIGNIFICADO, no por palabras exactas.",
+    "simulacion": "{\"intencion\": \"CONSULTA_NORMATIVA\", \"razon_social\": null, \"cuit\": null, \"facturacion_anual\": null, \"plazo_solicitado_dias\": null, \"categoria_solicitada\": null, \"documentos_mencionados\": []}"
+  },
+  {
+    "tipo": "Consulta de documentación",
+    "estado_esperado": "RESPONDIDA",
+    "mensaje": "Hola, ¿qué papeles tengo que mandar para tener cuenta corriente?",
+    "observar": "Responde con NOR-DOC. Es la misma regla que el workflow aplica en el paso 6, pero acá se usa para INFORMAR, no para decidir.",
+    "simulacion": "{\"intencion\": \"CONSULTA_NORMATIVA\", \"razon_social\": null, \"cuit\": null, \"facturacion_anual\": null, \"plazo_solicitado_dias\": null, \"categoria_solicitada\": null, \"documentos_mencionados\": []}"
+  },
+  {
+    "tipo": "Consulta sin respuesta",
+    "estado_esperado": "DERIVADO",
+    "mensaje": "¿Aceptan pagos con criptomonedas?",
+    "observar": "La normativa no dice nada de criptomonedas: ningún fragmento supera el umbral, el LLM ni se llama y se deriva con 'No tengo información oficial'. Sin RAG, un LLM lo inventa (python app.py comparar).",
+    "simulacion": "{\"intencion\": \"CONSULTA_NORMATIVA\", \"razon_social\": null, \"cuit\": null, \"facturacion_anual\": null, \"plazo_solicitado_dias\": null, \"categoria_solicitada\": null, \"documentos_mencionados\": []}"
   }
 ]

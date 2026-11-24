@@ -1,1 +1,6 @@
 .env
+.venv/
+# Índice vectorial de ChromaDB: se genera solo (python app.py indexar)
+indice_chroma/
+__pycache__/
+.pytest_cache/

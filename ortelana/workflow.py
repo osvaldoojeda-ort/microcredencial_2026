@@ -12,7 +12,10 @@ sigue: solo interviene en los pasos marcados [LLM]. Esa es la diferencia con un 
       ├─ 5  Validar el CUIT (dígito verificador) ........... [Regla]     ┘
       │       └─ ✋ si falla → REVISION_HUMANA
       ├─    Enrutar según la intención ..................... [Regla]
-      │       └─ si no es ALTA_DISTRIBUIDOR → DERIVADO (respuesta fija)
+      │       ├─ CONSULTA_NORMATIVA → RAG sobre la normativa ... [RAG + LLM]   ← NUEVO en la Clase 5
+      │       │     ├─ hay contexto sobre el umbral → RESPONDIDA (citando la regla)
+      │       │     └─ ✋ no hay → DERIVADO ("No tengo información oficial")
+      │       └─ otra que no es ALTA_DISTRIBUIDOR → DERIVADO (respuesta fija)
       ├─    ¿Están los datos mínimos? ...................... [Regla]
       ├─ 6  Verificar documentación (NOR-DOC) .............. [Regla]
       ├─ 7  Consultar el sistema de gestión ................ [Herramienta]
@@ -27,7 +30,8 @@ así que usamos los documentos que el distribuidor DICE que adjunta.
 
 Estados posibles al terminar:
     REVISION_HUMANA        → algo falló (extracción o CUIT): una persona revisa el mensaje original
-    DERIVADO               → no es un alta: respuesta fija según la Matriz de Intenciones
+    RESPONDIDA             → consulta normativa respondida con RAG, citando la regla (Clase 5)
+    DERIVADO               → no es un alta, o la normativa no cubre la consulta: respuesta fija
     PENDIENTE              → faltan datos o documentos: se le pide al distribuidor (no se rechaza)
     PENDIENTE_APROBACION   → legajo completo, esperando al Jefe de Administración (NOR-APROB)
     APROBADA / RECHAZADA   → la persona decidió y se redactó la respuesta
@@ -35,8 +39,10 @@ Estados posibles al terminar:
 
 from typing import Optional
 
+from .base_conocimiento import UMBRAL_SIMILITUD
 from .extractor import procesar_mensaje
 from .herramientas import consultar_sistema_gestion
+from .rag import SIN_INFORMACION, responder_consulta
 from .redactor import NOMBRES_FALTANTES, formatear_pesos, redactar_respuesta
 from .reglas import determinar_condiciones, normalizar_categoria, verificar_documentacion
 
@@ -96,6 +102,8 @@ def workflow_onboarding(mensaje: str, simulacion: Optional[str] = None) -> dict:
     traza.registrar("4-5", "Regla", "Validar contrato y CUIT", f"✅ {r.get('regla_cuit', 'OK')}")
 
     # ── Enrutamiento [Regla]: el CÓDIGO decide el camino según la intención ────
+    if datos["intencion"] == "CONSULTA_NORMATIVA":
+        return _responder_con_rag(traza, datos, mensaje)            # NUEVO en la Clase 5
     if datos["intencion"] != "ALTA_DISTRIBUIDOR":
         respuesta = RESPUESTAS_FIJAS[datos["intencion"]]
         traza.registrar("—", "Regla", "Enrutar por intención", f"{datos['intencion']} → respuesta fija")
@@ -157,6 +165,30 @@ def workflow_onboarding(mensaje: str, simulacion: Optional[str] = None) -> dict:
     # ── Paso 10 · ✋ Aprobación humana (NOR-APROB) ─────────────────────────────
     traza.registrar("10", "Humano", "Aprobación del Jefe de Administración", "⏸ esperando decisión")
     return _terminar(traza, "PENDIENTE_APROBACION", legajo=legajo)
+
+
+def _responder_con_rag(traza: Traza, datos: dict, mensaje: str) -> dict:
+    """
+    CONSULTA_NORMATIVA (Clase 5): en vez de la respuesta fija, se busca en la normativa y se responde
+    citando la regla. Si la normativa no dice nada sobre el tema, NO se inventa: se deriva.
+    """
+    traza.registrar("—", "Regla", "Enrutar por intención", "CONSULTA_NORMATIVA → RAG sobre la normativa")
+    r = responder_consulta(mensaje)
+
+    candidatos = "  ".join(f"{cid} {sim:.2f}{'✅' if ok else '✗'}" for cid, sim, ok in r["candidatos"])
+    traza.registrar("—", "RAG", f"Buscar en la normativa (umbral {UMBRAL_SIMILITUD})", candidatos or r["origen"])
+
+    if r["fuentes"] and r["texto"] and not r["texto"].startswith(SIN_INFORMACION):
+        traza.registrar("—", "LLM", "Responder con el contexto recuperado", r["origen"])
+        return _terminar(traza, "RESPONDIDA", datos=datos,
+                         respuesta={"texto": r["texto"], "origen": f"RAG · {r['origen']}", "fuentes": r["fuentes"]})
+
+    # ✋ Punto de control: la normativa no responde esto → no se inventa, se deriva
+    motivo = r["origen"] if not r["fuentes"] else "el modelo no encontró la respuesta en el contexto"
+    traza.registrar("—", "Regla", "Sin información oficial", f"✋ {motivo}")
+    return _terminar(traza, "DERIVADO", datos=datos, motivo=motivo,
+                     respuesta={"texto": f"{SIN_INFORMACION} {RESPUESTAS_FIJAS['CONSULTA_NORMATIVA']}",
+                                "origen": "RESPUESTA FIJA (la normativa no cubre la consulta)"})
 
 
 def _pedir_faltantes(traza: Traza, datos: dict, faltantes: list[str], alertas: list[str]) -> dict:
